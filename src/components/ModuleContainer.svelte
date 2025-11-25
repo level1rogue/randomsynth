@@ -1,4 +1,6 @@
 <script>
+	import { effect } from "astro:schema"
+
 	export let type = "synth" // default type is synth
 	export let isMuted = false
 	export let active = false // glow while active
@@ -17,6 +19,7 @@
 	class="container"
 	class:drum={type === "drum"}
 	class:main-out={type === "main-out"}
+	class:effect={type === "effect"}
 	class:muted={isMuted}
 	style="box-shadow: {boxShadow}; transition: box-shadow {transitionDuration} ease-out, border-color 0.15s;"
 >
@@ -41,6 +44,10 @@
 	}
 	.container.main-out {
 		border-color: var(--accent-main);
+	}
+	.container.effect {
+		border-color: var(--accent-effect);
+		max-width: 300px;
 	}
 	.container.muted {
 		border-color: var(--border-secondary);

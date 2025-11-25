@@ -19,6 +19,7 @@
 	export let bpm = 120
 	export let mixerChannels = []
 	export let globalReverb = null
+	export let globalDelay = null
 
 	// Drum voice configs (polymetric ready)
 	let drums = [
@@ -40,6 +41,8 @@
 			channel: null,
 			reverbSend: 0,
 			sendGain: null,
+			delaySend: 0,
+			delayGain: null,
 			synths: { kick: null },
 		},
 		{
@@ -61,6 +64,8 @@
 			channel: null,
 			reverbSend: 0,
 			sendGain: null,
+			delaySend: 0,
+			delayGain: null,
 			synths: { noise: null, body: null },
 		},
 		{
@@ -83,6 +88,8 @@
 			channel: null,
 			reverbSend: 0,
 			sendGain: null,
+			delaySend: 0,
+			delayGain: null,
 			synths: { hat: null },
 		},
 	]
@@ -95,6 +102,8 @@
 			pan: d.pan ?? 0,
 			reverbSend: d.reverbSend,
 			sendGain: null,
+			delaySend: d.delaySend,
+			delayGain: null,
 			isMuted: d.isMuted,
 			drumRef: d,
 		}))
@@ -109,6 +118,8 @@
 				d.channel.pan.value = d.pan ?? 0
 				if (globalReverb && !d.sendGain)
 					d.sendGain = new Gain(d.reverbSend).connect(globalReverb)
+				if (globalDelay && !d.delayGain)
+					d.delayGain = new Gain(d.delaySend).connect(globalDelay)
 			}
 			if (d.type === "kick" && !d.synths.kick) {
 				d.synths.kick = new MembraneSynth({
@@ -122,6 +133,7 @@
 					},
 				}).connect(d.channel)
 				if (d.sendGain) d.synths.kick.connect(d.sendGain)
+				if (d.delayGain) d.synths.kick.connect(d.delayGain)
 			}
 			if (d.type === "snare" && (!d.synths.noise || !d.synths.body)) {
 				d.synths.noise = new NoiseSynth({
@@ -138,6 +150,10 @@
 					d.synths.noise.connect(d.sendGain)
 					d.synths.body.connect(d.sendGain)
 				}
+				if (d.delayGain) {
+					d.synths.noise.connect(d.delayGain)
+					d.synths.body.connect(d.delayGain)
+				}
 			}
 			if ((d.type === "closedHat" || d.type === "openHat") && !d.synths.hat) {
 				d.synths.hat = new NoiseSynth({
@@ -151,8 +167,10 @@
 				}).connect(d.channel)
 				d.synths.hat.volume.value = -6
 				if (d.sendGain) d.synths.hat.connect(d.sendGain)
+				if (d.delayGain) d.synths.hat.connect(d.delayGain)
 			}
 			if (d.sendGain) d.sendGain.gain.value = d.reverbSend
+			if (d.delayGain) d.delayGain.gain.value = d.delaySend
 		}
 		mixerChannels.forEach((mixerCh) => {
 			const drum = mixerCh.drumRef
@@ -160,6 +178,8 @@
 				mixerCh.channel = drum.channel
 				mixerCh.sendGain = drum.sendGain
 				mixerCh.reverbSend = drum.reverbSend
+				mixerCh.delayGain = drum.delayGain
+				mixerCh.delaySend = drum.delaySend
 			}
 		})
 		mixerChannels = mixerChannels
@@ -171,6 +191,10 @@
 			if (ch.drumRef && ch.sendGain) {
 				ch.sendGain.gain.value = ch.reverbSend ?? 0
 				ch.drumRef.reverbSend = ch.reverbSend ?? 0
+			}
+			if (ch.drumRef && ch.delayGain) {
+				ch.delayGain.gain.value = ch.delaySend ?? 0
+				ch.drumRef.delaySend = ch.delaySend ?? 0
 			}
 		})
 

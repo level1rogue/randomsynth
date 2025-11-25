@@ -146,6 +146,32 @@
 
 		<div class="control-group">
 			<span class="control-label"
+				>Filter Cutoff: {synthConfig.filterCutoff} Hz</span
+			>
+			<input
+				type="range"
+				min="20"
+				max="20000"
+				step="1"
+				bind:value={synthConfig.filterCutoff}
+				on:input={notifyChange}
+			/>
+
+			<span class="control-label"
+				>Filter Q: {synthConfig.filterQ.toFixed(2)}</span
+			>
+			<input
+				type="range"
+				min="0.1"
+				max="20"
+				step="0.1"
+				bind:value={synthConfig.filterQ}
+				on:input={notifyChange}
+			/>
+		</div>
+
+		<div class="control-group">
+			<span class="control-label"
 				>Probability: {(synthConfig.probability * 100).toFixed(0)}%</span
 			>
 			<input

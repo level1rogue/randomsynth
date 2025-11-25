@@ -16,9 +16,29 @@
 		if (channel.pan !== undefined) {
 			channel.channel.pan.value = channel.pan
 		}
-		if (channel.sendGain && channel.reverbSend !== undefined) {
-			channel.sendGain.gain.value = channel.reverbSend
+		// Mute/unmute - handle channel and send effects
+		if (channel.isMuted !== undefined) {
+			channel.channel.mute = channel.isMuted
+			// When muted, silence the send effects; when unmuted, restore them
+			if (channel.sendGain && channel.reverbSend !== undefined) {
+				channel.sendGain.gain.value = channel.isMuted ? 0 : channel.reverbSend
+			}
+			if (channel.delayGain && channel.delaySend !== undefined) {
+				channel.delayGain.gain.rampTo(
+					channel.isMuted ? 0 : channel.delaySend,
+					0.01
+				)
+			}
+		} else {
+			// Normal operation when not handling mute state
+			if (channel.sendGain && channel.reverbSend !== undefined) {
+				channel.sendGain.gain.value = channel.reverbSend
+			}
+			if (channel.delayGain && channel.delaySend !== undefined) {
+				channel.delayGain.gain.rampTo(channel.delaySend, 0.01)
+			}
 		}
+
 		// Sync reverbSend back to config
 		if (channel.configRef && channel.reverbSend !== undefined) {
 			channel.configRef.reverbSend = channel.reverbSend
@@ -26,8 +46,12 @@
 		if (channel.drumRef && channel.reverbSend !== undefined) {
 			channel.drumRef.reverbSend = channel.reverbSend
 		}
-		if (channel.isMuted !== undefined) {
-			channel.channel.mute = channel.isMuted
+		// Sync delaySend back to config
+		if (channel.configRef && channel.delaySend !== undefined) {
+			channel.configRef.delaySend = channel.delaySend
+		}
+		if (channel.drumRef && channel.delaySend !== undefined) {
+			channel.drumRef.delaySend = channel.delaySend
 		}
 	}
 
@@ -62,6 +86,17 @@
 					/>
 				</label>
 
+				<label>
+					Delay <br />
+					{Math.round((channel.delaySend || 0) * 100)}%
+					<input
+						type="range"
+						min="0"
+						max="1"
+						step="0.01"
+						bind:value={channel.delaySend}
+					/>
+				</label>
 				<label>
 					Pan: <br />
 					{channel.pan.toFixed(2)}
@@ -114,6 +149,17 @@
 						max="1"
 						step="0.01"
 						bind:value={channel.reverbSend}
+					/>
+				</label>
+				<label>
+					Delay <br />
+					{Math.round((channel.delaySend || 0) * 100)}%
+					<input
+						type="range"
+						min="0"
+						max="1"
+						step="0.01"
+						bind:value={channel.delaySend}
 					/>
 				</label>
 				<label>

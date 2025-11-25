@@ -6,7 +6,9 @@
 		getTransport,
 		Channel,
 		Loop,
+		Filter,
 		Reverb,
+		PingPongDelay,
 		Gain,
 	} from "tone"
 	import { onMount } from "svelte"
@@ -14,6 +16,7 @@
 	import DrumComponent from "./DrumComponent.svelte"
 	import Mixer from "./Mixer.svelte"
 	import ReverbControl from "./ReverbControl.svelte"
+	import DelayControl from "./DelayControl.svelte"
 
 	// Per-waveform perceived loudness compensation (in dB)
 	// Adjust these by ear if needed. More complex psychoacoustic weighting would
@@ -44,13 +47,19 @@
 	let mixerSynthChannels = []
 	let mixerDrumChannels = []
 
-	// Global reverb bus (created lazily on first ensure)
+	// Global reverb and delay bus (created lazily on first ensure)
 	let globalReverb = null
-
+	let globalDelay = null
+	// Effect chain order: "parallel" (both to destination) or "delay-reverb" or "reverb-delay"
+	let effectChain = "parallel" // TODO: make effect-chain user-selectable
 	// Reverb configuration (editable before generation)
 	let reverbConfig = {
 		decay: 2.8,
 		preDelay: 0.02,
+	}
+	let delayConfig = {
+		delayTime: "8n", // eighth note (synced to BPM)
+		feedback: 0.5,
 	}
 
 	// Initialize mixer channels on mount
@@ -62,7 +71,9 @@
 			volume: 0,
 			pan: config.pan,
 			reverbSend: 0,
+			delaySend: 0,
 			sendGain: null,
+			delayGain: null,
 			isMuted: config.isMuted,
 			configRef: config, // Keep reference to update later
 		}))
@@ -80,11 +91,15 @@
 			probability: 0.4,
 			velocityIsProbability: false,
 			velocity: 0.5,
+			filterCutoff: 20000,
+			filterQ: 1,
+			filter: null,
 			isMuted: false,
 			isActive: false,
 			glowIntensity: 0,
 			glowDuration: 0.3,
 			reverbSend: 0,
+			delaySend: 0,
 			instance: null,
 			channel: null,
 			sendGain: null,
@@ -101,11 +116,15 @@
 			probability: 0.8,
 			velocityIsProbability: false,
 			velocity: 0.5,
+			filterCutoff: 20000,
+			filterQ: 1,
+			filter: null,
 			isMuted: false,
 			isActive: false,
 			glowIntensity: 0,
 			glowDuration: 0.3,
 			reverbSend: 0,
+			delaySend: 0,
 			instance: null,
 			channel: null,
 			sendGain: null,
@@ -122,11 +141,15 @@
 			probability: 0.7,
 			velocityIsProbability: false,
 			velocity: 0.5,
+			filterCutoff: 20000,
+			filterQ: 1,
+			filter: null,
 			isMuted: false,
 			isActive: false,
 			glowIntensity: 0,
 			glowDuration: 0.3,
 			reverbSend: 0,
+			delaySend: 0,
 			instance: null,
 			channel: null,
 			sendGain: null,
@@ -164,17 +187,64 @@
 			globalReverb.preDelay = reverbConfig.preDelay
 		}
 	}
+	// Handle delay config changes from child component
+	function handleDelayChange() {
+		if (globalDelay) {
+			console.log("Updating global delay with config:", delayConfig)
+			globalDelay.delayTime.value = delayConfig.delayTime
+			globalDelay.feedback.value = delayConfig.feedback
+		}
+	}
 
 	const ensureSynths = async () => {
 		await start()
-		if (!globalReverb) {
-			globalReverb = new Reverb({
-				decay: reverbConfig.decay,
-				preDelay: reverbConfig.preDelay,
-				wet: 1,
-			}).toDestination()
-			await globalReverb.generate()
-			console.log("Created global reverb with config:", reverbConfig)
+
+		// Create effects based on chain order
+		if (!globalReverb && !globalDelay) {
+			if (effectChain === "parallel") {
+				// Both effects go to destination
+				globalReverb = new Reverb({
+					decay: reverbConfig.decay,
+					preDelay: reverbConfig.preDelay,
+					wet: 1,
+				}).toDestination()
+				await globalReverb.generate()
+
+				globalDelay = new PingPongDelay({
+					delayTime: delayConfig.delayTime,
+					feedback: delayConfig.feedback,
+				}).toDestination()
+				globalDelay.wet.value = 1
+			} else if (effectChain === "delay-reverb") {
+				// Delay feeds into reverb
+				globalReverb = new Reverb({
+					decay: reverbConfig.decay,
+					preDelay: reverbConfig.preDelay,
+					wet: 1,
+				}).toDestination()
+				await globalReverb.generate()
+
+				globalDelay = new PingPongDelay({
+					delayTime: delayConfig.delayTime,
+					feedback: delayConfig.feedback,
+				}).connect(globalReverb)
+				globalDelay.wet.value = 1
+			} else if (effectChain === "reverb-delay") {
+				// Reverb feeds into delay
+				globalDelay = new PingPongDelay({
+					delayTime: delayConfig.delayTime,
+					feedback: delayConfig.feedback,
+				}).toDestination()
+				globalDelay.wet.value = 1
+
+				globalReverb = new Reverb({
+					decay: reverbConfig.decay,
+					preDelay: reverbConfig.preDelay,
+					wet: 1,
+				}).connect(globalDelay)
+				await globalReverb.generate()
+			}
+			console.log(`Created effects chain: ${effectChain}`)
 		}
 		// create synth instances if they don't exist and give it a channel so we can control pan/volume later
 		for (const config of synths) {
@@ -182,12 +252,43 @@
 				console.log(`Creating synth ${config.name} with shape:`, config.shape)
 				config.channel = new Channel().toDestination()
 				config.channel.pan.value = config.pan
-				config.sendGain = new Gain(config.reverbSend).connect(globalReverb)
+				config.sendGain = new Gain().connect(globalReverb)
+				config.sendGain.gain.value = config.reverbSend
+				config.delayGain = new Gain().connect(globalDelay)
+				config.delayGain.gain.value = config.delaySend
+				console.log(
+					`Created delayGain for ${config.name}:`,
+					config.delayGain,
+					"initial value:",
+					config.delaySend,
+					"connected to:",
+					globalDelay
+				)
 				// Create synth with default oscillator type
 				const oscillatorType = config.shape || "sine"
 				config.instance = new Synth()
-				config.instance.connect(config.channel)
-				config.instance.connect(config.sendGain)
+				// Create filter node (lowpass). If cutoff <= 20 treat as bypass (skip attaching).
+				if (!config.filter) {
+					if (config.filterCutoff && config.filterCutoff > 20) {
+						config.filter = new Filter(config.filterCutoff, "lowpass")
+						config.filter.Q.value = config.filterQ || 1
+						// Route synth -> filter -> channel & sends
+						config.instance.connect(config.filter)
+						config.filter.connect(config.channel)
+						config.filter.connect(config.sendGain)
+						config.filter.connect(config.delayGain)
+						console.log(`Filter created for ${config.name}`)
+					} else {
+						// Bypass: direct connections (no filter)
+						config.instance.connect(config.channel)
+						config.instance.connect(config.sendGain)
+						config.instance.connect(config.delayGain)
+						console.log(`Filter bypassed for ${config.name}`)
+					}
+				}
+				console.log(
+					`Connected ${config.name} to channel, sendGain, and delayGain`
+				)
 				// Set oscillator type after instance is created
 				try {
 					config.instance.set({ oscillator: { type: oscillatorType } })
@@ -203,8 +304,15 @@
 					)
 				}
 			}
-			// ensure send gain reflects current reverbSend
+			// ensure send gain reflects current reverbSend and delaySend
 			if (config.sendGain) config.sendGain.gain.value = config.reverbSend
+			if (config.delayGain) {
+				config.delayGain.gain.value = config.delaySend
+				console.log(
+					`${config.name} delayGain set to ${config.delaySend}`,
+					config.delayGain
+				)
+			}
 		}
 		// Update mixer channel references with created channels
 		mixerSynthChannels.forEach((mixerCh) => {
@@ -213,6 +321,8 @@
 				mixerCh.channel = config.channel
 				mixerCh.sendGain = config.sendGain
 				mixerCh.reverbSend = config.reverbSend
+				mixerCh.delayGain = config.delayGain
+				mixerCh.delaySend = config.delaySend
 			}
 		})
 		// Trigger reactivity
@@ -242,9 +352,41 @@
 				console.error("Error updating synth:", e)
 			}
 		}
+		// Update / (re)create filter if parameters changed significantly
+		if (config.filterCutoff !== undefined && config.filterQ !== undefined) {
+			// If filter node exists update params; else if cutoff > 20 create it and rewire
+			if (config.filter) {
+				config.filter.frequency.value = Math.max(config.filterCutoff, 20)
+				config.filter.Q.value = config.filterQ
+			} else if (config.filterCutoff > 20 && config.instance) {
+				config.filter = new Filter(config.filterCutoff, "lowpass")
+				config.filter.Q.value = config.filterQ
+				// Disconnect direct paths (if previously bypassed) and rewire
+				try {
+					config.instance.disconnect()
+				} catch {}
+				config.instance.connect(config.filter)
+				config.filter.connect(config.channel)
+				if (config.sendGain) config.filter.connect(config.sendGain)
+				if (config.delayGain) config.filter.connect(config.delayGain)
+				console.log(`Filter dynamically added to ${config.name}`)
+			}
+		}
+		// Update filter parameters
+		if (config.filter) {
+			config.filter.frequency.value = config.filterCutoff
+			config.filter.Q.value = config.filterQ
+		}
 		// Reverb send: update gain node directly (mixer will handle UI sync)
 		if (config.sendGain) {
 			config.sendGain.gain.value = config.reverbSend
+		}
+		// Delay send: update gain node directly (mixer will handle UI sync)
+		if (config.delayGain) {
+			config.delayGain.gain.value = config.delaySend
+			console.log(
+				`handleSynthChange: ${config.name} delaySend = ${config.delaySend}`
+			)
 		}
 		// If stepInterval changed while playing, rebuild that loop for immediate effect
 		if (isPlaying && config.loop) {
@@ -356,10 +498,14 @@
 		}
 	}
 
-	// update BPM dynamically when it changes (only if playing)
+	// update BPM dynamically when it changes
 	$: if (isPlaying && bpm) {
 		try {
 			getTransport().bpm.value = bpm
+			// Update delay time to sync with new BPM
+			if (globalDelay && delayConfig.delayTime) {
+				globalDelay.delayTime.value = delayConfig.delayTime
+			}
 		} catch (e) {
 			// ignore if transport not ready
 		}
@@ -394,18 +540,18 @@
 		bind:this={drumComponentRef}
 		bind:mixerChannels={mixerDrumChannels}
 		{globalReverb}
+		{globalDelay}
 	/>
 </div>
-<div class="bottom-section">
-	<div class="synth-section">
-		<h2>┌─ SYNTHS ─┐</h2>
-		<div class="synth-grid">
-			{#each synths as synthConfig}
-				<SynthComponent {synthConfig} on:change={handleSynthChange} />
-			{/each}
-		</div>
+<div class="synth-section">
+	<h2>┌─ SYNTHS ─┐</h2>
+	<div class="synth-grid">
+		{#each synths as synthConfig}
+			<SynthComponent {synthConfig} on:change={handleSynthChange} />
+		{/each}
 	</div>
-
+</div>
+<div class="bottom-section">
 	<div class="mixer-section">
 		<h2>┌─ MIXER ─┐</h2>
 		<Mixer
@@ -413,12 +559,17 @@
 			drumChannels={mixerDrumChannels}
 		/>
 	</div>
-</div>
-<div class="effects-section">
-	<h2>┌─ EFFECTS ─┐</h2>
-	{#if reverbConfig}
-		<ReverbControl {reverbConfig} on:change={handleReverbChange} />
-	{/if}
+	<div class="effects-section">
+		<h2>┌─ GLOBAL EFFECTS ─┐</h2>
+		<div class="effects-container">
+			{#if reverbConfig}
+				<ReverbControl {reverbConfig} on:change={handleReverbChange} />
+			{/if}
+			{#if delayConfig}
+				<DelayControl {delayConfig} on:change={handleDelayChange} />
+			{/if}
+		</div>
+	</div>
 </div>
 
 <style>
@@ -475,7 +626,16 @@
 		gap: var(--gap-lg);
 		flex-wrap: wrap;
 		justify-content: center;
-		align-items: center;
+		width: fit-content;
+		margin: 0 auto;
+		/* align-items: center; */
+	}
+	.effects-container {
+		display: flex;
+		gap: var(--gap-md);
+		justify-content: space-around;
+		width: fit-content;
+		margin: 0 auto;
 	}
 	.synth-grid {
 		display: flex;
