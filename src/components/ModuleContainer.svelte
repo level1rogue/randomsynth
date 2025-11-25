@@ -35,6 +35,8 @@
 		border-radius: 8px;
 		display: flex;
 		flex-direction: column;
+		justify-content: center;
+		align-items: center;
 		gap: 0.75rem;
 		position: relative;
 		flex: 1;
