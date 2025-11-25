@@ -2,12 +2,24 @@
 	import ModuleContainer from "./ModuleContainer.svelte"
 	import { createEventDispatcher } from "svelte"
 	import Icon from "@iconify/svelte"
+	import PixelCheckbox from "./PixelCheckbox.svelte"
 	export let synthConfig
 
 	const dispatch = createEventDispatcher()
 	const SYNTH_WAVEFORMS = ["sine", "square", "triangle", "sawtooth"]
 	const NOTE_LENGTHS = ["1n", "2n", "4n", "8n", "16n"]
 	const STEP_INTERVALS = ["1n", "2n", "4n", "8n", "16n"]
+
+	// Track base waveform separately so we can add/remove "fat" prefix
+	let baseShape = synthConfig.shape?.replace(/^fat/, "") || "sine"
+	// Reactive: update shape when oscBoost or baseShape changes
+	$: {
+		const newShape = synthConfig.oscBoost ? "fat" + baseShape : baseShape
+		if (synthConfig.shape !== newShape) {
+			synthConfig.shape = newShape
+			notifyChange()
+		}
+	}
 
 	const WAVEFORM_TO_SYMBOL = {
 		sine: "mdi:sine-wave",
@@ -55,6 +67,7 @@
 	type="synth"
 	active={synthConfig.isActive}
 	isMuted={synthConfig.isMuted}
+	isSoloed={synthConfig.isSoloed}
 	glowIntensity={synthConfig.glowIntensity || 0}
 	glowDuration={synthConfig.glowDuration || 0.3}
 >
@@ -66,20 +79,27 @@
 				<div class="module-title">TONE</div>
 				<div class="">
 					<span class="control-label">Wave</span>
+
 					<div class="button-group small">
 						{#each SYNTH_WAVEFORMS as waveform}
 							<button
 								class="icon-button"
-								class:active={synthConfig.shape === waveform}
+								class:active={baseShape === waveform}
 								on:click={() => {
-									synthConfig.shape = waveform
-									notifyChange()
+									baseShape = waveform
 								}}
 								title={waveform}
 							>
 								<Icon icon={WAVEFORM_TO_SYMBOL[waveform]} />
 							</button>
 						{/each}
+					</div>
+					<div class="button-group small">
+						<PixelCheckbox
+							label="Boost"
+							bind:checked={synthConfig.oscBoost}
+							on:change={notifyChange}
+						/>
 					</div>
 				</div>
 				<div class="">
@@ -328,12 +348,7 @@
 		flex-wrap: wrap;
 	}
 
-	.inline-group {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		gap: 6px;
-	}
+	/* .inline-group removed (unused after layout refactor) */
 
 	.fader-row {
 		display: flex;

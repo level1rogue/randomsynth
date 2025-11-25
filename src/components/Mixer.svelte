@@ -16,6 +16,17 @@
 		if (channel.pan !== undefined) {
 			channel.channel.pan.value = channel.pan
 		}
+		// Apply solo state to Tone.Channel (Tone will auto-manage muting of non-solo channels)
+		if (channel.isSoloed !== undefined) {
+			try {
+				channel.channel.solo = channel.isSoloed
+				// Optional: if soloing a muted channel, unmute it for clarity
+				if (channel.isSoloed && channel.isMuted) {
+					channel.isMuted = false
+					channel.channel.mute = false
+				}
+			} catch {}
+		}
 		// Mute/unmute - handle channel and send effects
 		if (channel.isMuted !== undefined) {
 			channel.channel.mute = channel.isMuted
@@ -29,6 +40,11 @@
 					0.01
 				)
 			}
+			if (channel.bitCrusherGain && channel.bitCrusherSend !== undefined) {
+				channel.bitCrusherGain.gain.value = channel.isMuted
+					? 0
+					: channel.bitCrusherSend
+			}
 		} else {
 			// Normal operation when not handling mute state
 			if (channel.sendGain && channel.reverbSend !== undefined) {
@@ -36,6 +52,9 @@
 			}
 			if (channel.delayGain && channel.delaySend !== undefined) {
 				channel.delayGain.gain.rampTo(channel.delaySend, 0.01)
+			}
+			if (channel.bitCrusherGain && channel.bitCrusherSend !== undefined) {
+				channel.bitCrusherGain.gain.value = channel.bitCrusherSend
 			}
 		}
 
@@ -52,6 +71,20 @@
 		}
 		if (channel.drumRef && channel.delaySend !== undefined) {
 			channel.drumRef.delaySend = channel.delaySend
+		}
+		// Sync bitCrusherSend back to config
+		if (channel.configRef && channel.bitCrusherSend !== undefined) {
+			channel.configRef.bitCrusherSend = channel.bitCrusherSend
+		}
+		if (channel.drumRef && channel.bitCrusherSend !== undefined) {
+			channel.drumRef.bitCrusherSend = channel.bitCrusherSend
+		}
+		// Sync solo state back to config
+		if (channel.configRef && channel.isSoloed !== undefined) {
+			channel.configRef.isSoloed = channel.isSoloed
+		}
+		if (channel.drumRef && channel.isSoloed !== undefined) {
+			channel.drumRef.isSoloed = channel.isSoloed
 		}
 	}
 
@@ -70,7 +103,11 @@
 <div class="mixer-grid">
 	<!-- Drum Channels -->
 	{#each drumChannels as channel}
-		<ModuleContainer type="drum" isMuted={channel.isMuted}>
+		<ModuleContainer
+			type="drum"
+			isMuted={channel.isMuted}
+			isSoloed={channel.isSoloed}
+		>
 			<div class="mixer-channel">
 				<h3>{channel.name}</h3>
 
@@ -110,6 +147,17 @@
 				</label>
 
 				<label>
+					CrushSend <br />
+					{Math.round((channel.bitCrusherSend || 0) * 100)}%
+					<input
+						type="range"
+						min="0"
+						max="1"
+						step="0.01"
+						bind:value={channel.bitCrusherSend}
+					/>
+				</label>
+				<label>
 					{channel.volume.toFixed(1)}dB
 					<input
 						type="range"
@@ -120,19 +168,28 @@
 						bind:value={channel.volume}
 					/>
 				</label>
-				<button
-					class="mute-button"
-					class:active={channel.isMuted}
-					on:click={() => (channel.isMuted = !channel.isMuted)}
-				>
-					M
-				</button>
+				<div class="mute-solo-controls">
+					<button
+						class="solo-button"
+						class:active={channel.isSoloed}
+						on:click={() => (channel.isSoloed = !channel.isSoloed)}
+					>
+						S
+					</button>
+					<button
+						class="mute-button"
+						class:active={channel.isMuted}
+						on:click={() => (channel.isMuted = !channel.isMuted)}
+					>
+						M
+					</button>
+				</div>
 			</div>
 		</ModuleContainer>
 	{/each}
 	<!-- Synth Channels -->
 	{#each synthChannels as channel}
-		<ModuleContainer isMuted={channel.isMuted}>
+		<ModuleContainer isMuted={channel.isMuted} isSoloed={channel.isSoloed}>
 			<div class="mixer-channel" class:muted={channel.isMuted}>
 				<h3>{channel.name}</h3>
 
@@ -174,6 +231,17 @@
 					/>
 				</label>
 				<label>
+					CrushSend <br />
+					{Math.round((channel.bitCrusherSend || 0) * 100)}%
+					<input
+						type="range"
+						min="0"
+						max="1"
+						step="0.01"
+						bind:value={channel.bitCrusherSend}
+					/>
+				</label>
+				<label>
 					{channel.volume.toFixed(1)}dB
 					<input
 						type="range"
@@ -184,14 +252,22 @@
 						bind:value={channel.volume}
 					/>
 				</label>
-
-				<button
-					class="mute-button"
-					class:active={channel.isMuted}
-					on:click={() => (channel.isMuted = !channel.isMuted)}
-				>
-					M
-				</button>
+				<div class="mute-solo-controls">
+					<button
+						class="solo-button"
+						class:active={channel.isSoloed}
+						on:click={() => (channel.isSoloed = !channel.isSoloed)}
+					>
+						S
+					</button>
+					<button
+						class="mute-button"
+						class:active={channel.isMuted}
+						on:click={() => (channel.isMuted = !channel.isMuted)}
+					>
+						M
+					</button>
+				</div>
 			</div>
 		</ModuleContainer>
 	{/each}
@@ -247,17 +323,24 @@
 		border-bottom: 1px solid var(--border-secondary);
 	}
 
-	.mute-button {
-		width: 100%;
+	.mute-solo-controls {
+		display: flex;
+		gap: var(--gap-sm);
+	}
+
+	.mute-button,
+	.solo-button {
+		/* width: 100%; */
 		padding: 0.5rem;
-		font-size: 1.5rem;
+		font-size: 1rem;
 		background: var(--bg-secondary);
 		border: 1px solid var(--border-secondary);
 		cursor: pointer;
 		transition: all 0.1s;
 	}
 
-	.mute-button:hover {
+	.mute-button:hover,
+	.solo-button:hover {
 		border-color: var(--accent-synth);
 	}
 
@@ -266,6 +349,11 @@
 		border-color: var(--border-muted);
 		color: var(--border-muted);
 		/* opacity: 0.6; */
+	}
+	.solo-button.active {
+		background: var(--border-soloed);
+		border-color: var(--border-soloed);
+		color: var(--bg-primary);
 	}
 
 	.mixer-channel label {

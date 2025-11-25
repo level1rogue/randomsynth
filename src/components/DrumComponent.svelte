@@ -20,6 +20,7 @@
 	export let mixerChannels = []
 	export let globalReverb = null
 	export let globalDelay = null
+	export let globalBitCrusher = null
 
 	// Drum voice configs (polymetric ready)
 	let drums = [
@@ -30,6 +31,7 @@
 			pitch: 50,
 			decay: 0.6,
 			isMuted: false,
+			isSoloed: false,
 			isActive: false,
 			glowIntensity: 0,
 			glowDuration: 0.3,
@@ -43,6 +45,8 @@
 			sendGain: null,
 			delaySend: 0,
 			delayGain: null,
+			bitCrusherSend: 0,
+			bitCrusherGain: null,
 			synths: { kick: null },
 		},
 		{
@@ -51,6 +55,7 @@
 			pan: 0,
 			snappy: 0.5,
 			isMuted: false,
+			isSoloed: false,
 			isActive: false,
 			glowIntensity: 0,
 			glowDuration: 0.3,
@@ -66,6 +71,8 @@
 			sendGain: null,
 			delaySend: 0,
 			delayGain: null,
+			bitCrusherSend: 0,
+			bitCrusherGain: null,
 			synths: { noise: null, body: null },
 		},
 		{
@@ -74,6 +81,7 @@
 			pan: 0.5,
 			decay: 0.08,
 			isMuted: false,
+			isSoloed: false,
 			isActive: false,
 			glowIntensity: 0,
 			glowDuration: 0.3,
@@ -90,6 +98,8 @@
 			sendGain: null,
 			delaySend: 0,
 			delayGain: null,
+			bitCrusherSend: 0,
+			bitCrusherGain: null,
 			synths: { hat: null },
 		},
 	]
@@ -104,7 +114,10 @@
 			sendGain: null,
 			delaySend: d.delaySend,
 			delayGain: null,
+			bitCrusherSend: d.bitCrusherSend,
+			bitCrusherGain: null,
 			isMuted: d.isMuted,
+			isSoloed: d.isSoloed,
 			drumRef: d,
 		}))
 	})
@@ -116,10 +129,16 @@
 				d.channel = new Channel().toDestination()
 				d.channel.volume.value = 0
 				d.channel.pan.value = d.pan ?? 0
+				// Initialize solo state on channel
+				try {
+					d.channel.solo = !!d.isSoloed
+				} catch {}
 				if (globalReverb && !d.sendGain)
 					d.sendGain = new Gain(d.reverbSend).connect(globalReverb)
 				if (globalDelay && !d.delayGain)
 					d.delayGain = new Gain(d.delaySend).connect(globalDelay)
+				if (globalBitCrusher && !d.bitCrusherGain)
+					d.bitCrusherGain = new Gain(d.bitCrusherSend).connect(globalBitCrusher)
 			}
 			if (d.type === "kick" && !d.synths.kick) {
 				d.synths.kick = new MembraneSynth({
@@ -134,6 +153,7 @@
 				}).connect(d.channel)
 				if (d.sendGain) d.synths.kick.connect(d.sendGain)
 				if (d.delayGain) d.synths.kick.connect(d.delayGain)
+				if (d.bitCrusherGain) d.synths.kick.connect(d.bitCrusherGain)
 			}
 			if (d.type === "snare" && (!d.synths.noise || !d.synths.body)) {
 				d.synths.noise = new NoiseSynth({
@@ -154,6 +174,10 @@
 					d.synths.noise.connect(d.delayGain)
 					d.synths.body.connect(d.delayGain)
 				}
+				if (d.bitCrusherGain) {
+					d.synths.noise.connect(d.bitCrusherGain)
+					d.synths.body.connect(d.bitCrusherGain)
+				}
 			}
 			if ((d.type === "closedHat" || d.type === "openHat") && !d.synths.hat) {
 				d.synths.hat = new NoiseSynth({
@@ -168,9 +192,11 @@
 				d.synths.hat.volume.value = -6
 				if (d.sendGain) d.synths.hat.connect(d.sendGain)
 				if (d.delayGain) d.synths.hat.connect(d.delayGain)
+				if (d.bitCrusherGain) d.synths.hat.connect(d.bitCrusherGain)
 			}
 			if (d.sendGain) d.sendGain.gain.value = d.reverbSend
 			if (d.delayGain) d.delayGain.gain.value = d.delaySend
+			if (d.bitCrusherGain) d.bitCrusherGain.gain.value = d.bitCrusherSend
 		}
 		mixerChannels.forEach((mixerCh) => {
 			const drum = mixerCh.drumRef
@@ -180,6 +206,8 @@
 				mixerCh.reverbSend = drum.reverbSend
 				mixerCh.delayGain = drum.delayGain
 				mixerCh.delaySend = drum.delaySend
+				mixerCh.bitCrusherGain = drum.bitCrusherGain
+				mixerCh.bitCrusherSend = drum.bitCrusherSend
 			}
 		})
 		mixerChannels = mixerChannels
@@ -195,6 +223,10 @@
 			if (ch.drumRef && ch.delayGain) {
 				ch.delayGain.gain.value = ch.delaySend ?? 0
 				ch.drumRef.delaySend = ch.delaySend ?? 0
+			}
+			if (ch.drumRef && ch.bitCrusherGain) {
+				ch.bitCrusherGain.gain.value = ch.bitCrusherSend ?? 0
+				ch.drumRef.bitCrusherSend = ch.bitCrusherSend ?? 0
 			}
 		})
 
@@ -325,6 +357,7 @@
 			type="drum"
 			active={d.isActive}
 			isMuted={d.isMuted}
+			isSoloed={d.isSoloed}
 			glowIntensity={d.glowIntensity || 0}
 			glowDuration={d.glowDuration || 0.3}
 		>

@@ -29,7 +29,7 @@ import Synth from "../components/Synth.svelte"
 		--text-dim: #3d7a52;
 
 		--accent-synth: #78ff9e;
-		--accent-drum: #f5e748;
+		--accent-drum: #48f5d8;
 		--accent-main: #ff78dd;
 		--accent-effect: #78a0ff;
 		--accent-hover: #a0ffc0;
@@ -38,6 +38,7 @@ import Synth from "../components/Synth.svelte"
 		--border-secondary: #3d7a52;
 
 		--border-muted: #963737;
+		--border-soloed: #ffd700;
 
 		/* Spacing */
 		--gap-sm: 0.5rem;
@@ -133,6 +134,8 @@ import Synth from "../components/Synth.svelte"
 		accent-color: var(--accent-synth);
 	}
 
+	/* Legacy .checkbox styles removed in favor of PixelCheckbox component */
+
 	label {
 		font-size: 0.85rem;
 		text-transform: uppercase;
@@ -154,5 +157,10 @@ import Synth from "../components/Synth.svelte"
 		padding: var(--gap-md);
 		max-width: 1600px;
 		text-align: center;
+	}
+
+	/* Mixer solo logic */
+	.mixer-grid:has(.container.soloed) > .container:not(.main-out):not(.soloed) {
+		opacity: 0.5;
 	}
 </style>

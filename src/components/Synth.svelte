@@ -10,6 +10,7 @@
 		Filter,
 		Reverb,
 		PingPongDelay,
+		BitCrusher,
 		Gain,
 	} from "tone"
 	import { onMount } from "svelte"
@@ -18,6 +19,7 @@
 	import Mixer from "./Mixer.svelte"
 	import ReverbControl from "./ReverbControl.svelte"
 	import DelayControl from "./DelayControl.svelte"
+	import BitCrusherControl from "./BitCrusherControl.svelte"
 
 	// Per-waveform perceived loudness compensation (in dB)
 	// Adjust these by ear if needed. More complex psychoacoustic weighting would
@@ -28,6 +30,11 @@
 		triangle: -1.5, // slightly brighter than sine
 		square: -10, // strong odd harmonics
 		sawtooth: -6, // richest harmonic content
+		// "fat" variants (3 detuned oscillators)
+		fatsine: 0,
+		fattriangle: 0,
+		fatsquare: 0,
+		fatsawtooth: 0,
 	}
 
 	function applyShapeComp(config) {
@@ -51,6 +58,7 @@
 	// Global reverb and delay bus (created lazily on first ensure)
 	let globalReverb = null
 	let globalDelay = null
+	let globalBitCrusher = null
 	// Effect chain order: "parallel" (both to destination) or "delay-reverb" or "reverb-delay"
 	let effectChain = "parallel" // TODO: make effect-chain user-selectable
 	// Reverb configuration (editable before generation)
@@ -61,6 +69,10 @@
 	let delayConfig = {
 		delayTime: "8n", // eighth note (synced to BPM)
 		feedback: 0.5,
+	}
+	let bitCrusherConfig = {
+		bits: 4, // global bit depth
+		wet: 1, // global wet mix (BitCrusher's internal wet)
 	}
 
 	// Initialize mixer channels on mount
@@ -73,9 +85,12 @@
 			pan: config.pan,
 			reverbSend: 0,
 			delaySend: 0,
+			bitCrusherSend: config.bitCrusherSend ?? 0,
 			sendGain: null,
 			delayGain: null,
+			bitCrusherGain: null,
 			isMuted: config.isMuted,
+			isSoloed: config.isSoloed,
 			configRef: config, // Keep reference to update later
 		}))
 	})
@@ -85,6 +100,7 @@
 			name: "synth1",
 			pan: -1,
 			shape: "triangle",
+			oscBoost: false,
 			noteLength: "8n",
 			stepInterval: "16n",
 			minOctave: 3,
@@ -92,17 +108,19 @@
 			probability: 0.4,
 			velocityIsProbability: false,
 			velocity: 0.5,
-
 			filterCutoff: 20000,
 			filterQ: 1,
 			filter: null,
+			bitCrusherSend: 0,
 			envelope: { attack: 0.01, decay: 0.2, sustain: 0.5, release: 0.3 },
 			isMuted: false,
+			isSoloed: false,
 			isActive: false,
 			glowIntensity: 0,
 			glowDuration: 0.3,
 			reverbSend: 0,
 			delaySend: 0,
+			bitCrusherSend: 0,
 			instance: null,
 			channel: null,
 			sendGain: null,
@@ -112,6 +130,7 @@
 			name: "synth2",
 			pan: 0,
 			shape: "sawtooth",
+			oscBoost: false,
 			noteLength: "8n",
 			stepInterval: "4n",
 			minOctave: 2,
@@ -119,17 +138,19 @@
 			probability: 0.8,
 			velocityIsProbability: false,
 			velocity: 0.5,
-
 			filterCutoff: 20000,
 			filterQ: 1,
 			filter: null,
+			bitCrusherSend: 0,
 			envelope: { attack: 0.005, decay: 0.15, sustain: 0.4, release: 0.25 },
 			isMuted: false,
+			isSoloed: false,
 			isActive: false,
 			glowIntensity: 0,
 			glowDuration: 0.3,
 			reverbSend: 0,
 			delaySend: 0,
+			bitCrusherSend: 0,
 			instance: null,
 			channel: null,
 			sendGain: null,
@@ -139,24 +160,27 @@
 			name: "synth3",
 			pan: 1,
 			shape: "sine",
-			noteLength: "2n",
+			oscBoost: false,
+			noteLength: "16n",
 			stepInterval: "1n",
 			minOctave: 4,
 			maxOctave: 6,
 			probability: 0.7,
 			velocityIsProbability: false,
 			velocity: 0.5,
-
 			filterCutoff: 20000,
 			filterQ: 1,
 			filter: null,
+			bitCrusherSend: 0,
 			envelope: { attack: 0.02, decay: 0.3, sustain: 0.6, release: 0.4 },
 			isMuted: false,
+			isSoloed: false,
 			isActive: false,
 			glowIntensity: 0,
 			glowDuration: 0.3,
 			reverbSend: 0,
 			delaySend: 0,
+			bitCrusherSend: 0,
 			instance: null,
 			channel: null,
 			sendGain: null,
@@ -200,6 +224,14 @@
 			console.log("Updating global delay with config:", delayConfig)
 			globalDelay.delayTime.value = delayConfig.delayTime
 			globalDelay.feedback.value = delayConfig.feedback
+		}
+	}
+	// Handle bitCrusher config changes from child component
+	function handleBitCrusherChange() {
+		if (globalBitCrusher) {
+			console.log("Updating global bitCrusher with config:", bitCrusherConfig)
+			globalBitCrusher.bits = bitCrusherConfig.bits
+			globalBitCrusher.wet.value = bitCrusherConfig.wet
 		}
 	}
 
@@ -253,12 +285,23 @@
 			}
 			console.log(`Created effects chain: ${effectChain}`)
 		}
+		// Create global BitCrusher (always parallel) if not exists
+		if (!globalBitCrusher) {
+			globalBitCrusher = new BitCrusher(bitCrusherConfig.bits)
+			globalBitCrusher.wet.value = bitCrusherConfig.wet
+			globalBitCrusher.toDestination()
+			console.log("Created global BitCrusher")
+		}
 		// create synth instances if they don't exist and give it a channel so we can control pan/volume later
 		for (const config of synths) {
 			if (!config.instance) {
 				console.log(`Creating synth ${config.name} with shape:`, config.shape)
 				config.channel = new Channel().toDestination()
 				config.channel.pan.value = config.pan
+				// Initialize solo state on Tone.Channel if provided
+				try {
+					config.channel.solo = !!config.isSoloed
+				} catch {}
 				config.sendGain = new Gain().connect(globalReverb)
 				config.sendGain.gain.value = config.reverbSend
 				config.delayGain = new Gain().connect(globalDelay)
@@ -285,20 +328,24 @@
 						config.filter.Q.value = config.filterQ || 1
 						// Route synth -> filter -> channel & sends
 						config.instance.connect(config.filter)
-						config.filter.connect(config.channel)
-						config.filter.connect(config.sendGain)
-						config.filter.connect(config.delayGain)
-						console.log(`Filter created for ${config.name}`)
 					} else {
-						// Bypass: direct connections (no filter)
-						config.instance.connect(config.channel)
-						config.instance.connect(config.sendGain)
-						config.instance.connect(config.delayGain)
-						console.log(`Filter bypassed for ${config.name}`)
+						// Bypass: no filter node
 					}
 				}
+				// Build final chain (optional filter) and connect to outputs
+				let sourceNode = config.filter || config.instance
+				sourceNode.connect(config.channel)
+				sourceNode.connect(config.sendGain)
+				sourceNode.connect(config.delayGain)
+				// BitCrusher send gain (parallel)
+				if (!config.bitCrusherGain) {
+					config.bitCrusherGain = new Gain(config.bitCrusherSend).connect(
+						globalBitCrusher
+					)
+				}
+				sourceNode.connect(config.bitCrusherGain)
 				console.log(
-					`Connected ${config.name} to channel, sendGain, and delayGain`
+					`Connected ${config.name} chain (filter=${!!config.filter}) to outputs + globalBitCrusher send`
 				)
 				// Apply loudness compensation after creation
 				applyShapeComp(config)
@@ -312,6 +359,8 @@
 					config.delayGain
 				)
 			}
+			if (config.bitCrusherGain)
+				config.bitCrusherGain.gain.value = config.bitCrusherSend || 0
 		}
 		// Update mixer channel references with created channels
 		mixerSynthChannels.forEach((mixerCh) => {
@@ -322,6 +371,8 @@
 				mixerCh.reverbSend = config.reverbSend
 				mixerCh.delayGain = config.delayGain
 				mixerCh.delaySend = config.delaySend
+				mixerCh.bitCrusherGain = config.bitCrusherGain
+				mixerCh.bitCrusherSend = config.bitCrusherSend
 			}
 		})
 		// Trigger reactivity
@@ -380,6 +431,9 @@
 				console.log(`Filter dynamically added to ${config.name}`)
 			}
 		}
+		// Update BitCrusher send gain
+		if (config.bitCrusherGain)
+			config.bitCrusherGain.gain.value = config.bitCrusherSend || 0
 		// Update filter parameters
 		if (config.filter) {
 			config.filter.frequency.value = config.filterCutoff
@@ -395,6 +449,10 @@
 			console.log(
 				`handleSynthChange: ${config.name} delaySend = ${config.delaySend}`
 			)
+		}
+		// BitCrusher send update
+		if (config.bitCrusherGain) {
+			config.bitCrusherGain.gain.value = config.bitCrusherSend || 0
 		}
 		// If stepInterval changed while playing, rebuild that loop for immediate effect
 		if (isPlaying && config.loop) {
@@ -549,6 +607,7 @@
 		bind:mixerChannels={mixerDrumChannels}
 		{globalReverb}
 		{globalDelay}
+		{globalBitCrusher}
 	/>
 </div>
 <div class="synth-section">
@@ -575,6 +634,12 @@
 			{/if}
 			{#if delayConfig}
 				<DelayControl {delayConfig} on:change={handleDelayChange} />
+			{/if}
+			{#if bitCrusherConfig}
+				<BitCrusherControl
+					{bitCrusherConfig}
+					on:change={handleBitCrusherChange}
+				/>
 			{/if}
 		</div>
 	</div>
