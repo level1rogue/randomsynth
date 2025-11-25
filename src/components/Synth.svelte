@@ -12,6 +12,7 @@
 		PingPongDelay,
 		BitCrusher,
 		Compressor,
+		WaveShaper,
 		Gain,
 		getDestination,
 	} from "tone"
@@ -62,6 +63,7 @@
 	let globalDelay = null
 	let globalBitCrusher = null
 	let masterCompressor = null
+	let masterSaturation = null
 	// Effect chain order: "parallel" (both to destination) or "delay-reverb" or "reverb-delay"
 	let effectChain = "parallel" // TODO: make effect-chain user-selectable
 	// Reverb configuration (editable before generation)
@@ -295,14 +297,34 @@
 			globalBitCrusher.toDestination()
 			console.log("Created global BitCrusher")
 		}
+		// Create master saturation (more audible soft-clipping for warmth)
+		if (!masterSaturation) {
+			// Soft saturation curve with more drive for audible warmth
+			const makeSaturationCurve = (amount = 1.5) => {
+				const samples = 1024
+				const curve = new Float32Array(samples)
+				for (let i = 0; i < samples; i++) {
+					const x = (i * 2) / samples - 1
+					// Aggressive tanh curve for warm saturation
+					const drive = 1 + amount * 3
+					curve[i] = Math.tanh(x * drive) / Math.tanh(drive)
+				}
+				return curve
+			}
+			masterSaturation = new WaveShaper(makeSaturationCurve(1.5))
+			masterSaturation.oversample = "4x" // Higher oversampling for better quality
+		}
 		// Create master compressor on main output if not exists
 		if (!masterCompressor) {
 			masterCompressor = new Compressor({
-				threshold: -24,
-				ratio: 16,
+				threshold: -30,
+				ratio: 12,
 				attack: 0.003,
-				release: 0.25,
-			}).connect(getDestination())
+				release: 0.1,
+				knee: 10,
+			})
+				.connect(masterSaturation)
+				.connect(getDestination())
 			// Reconnect all effect buses through compressor
 			globalReverb.disconnect()
 			globalReverb.connect(masterCompressor)
@@ -310,13 +332,13 @@
 			globalDelay.connect(masterCompressor)
 			globalBitCrusher.disconnect()
 			globalBitCrusher.connect(masterCompressor)
-			console.log("Created master compressor")
+			console.log("Created master compressor with saturation")
 		}
 		// create synth instances if they don't exist and give it a channel so we can control pan/volume later
 		for (const config of synths) {
 			if (!config.instance) {
 				console.log(`Creating synth ${config.name} with shape:`, config.shape)
-				config.channel = new Channel().toDestination()
+				config.channel = new Channel().connect(masterCompressor)
 				config.channel.pan.value = config.pan
 				// Initialize solo state on Tone.Channel if provided
 				try {
@@ -628,6 +650,7 @@
 		{globalReverb}
 		{globalDelay}
 		{globalBitCrusher}
+		{masterCompressor}
 	/>
 </div>
 <div class="synth-section">
@@ -650,17 +673,17 @@
 	<div class="effects-section">
 		<h2>┌─ GLOBAL EFFECTS ─┐</h2>
 		<div class="effects-container">
-			{#if reverbConfig}
-				<ReverbControl {reverbConfig} on:change={handleReverbChange} />
-			{/if}
-			{#if delayConfig}
-				<DelayControl {delayConfig} on:change={handleDelayChange} />
-			{/if}
 			{#if bitCrusherConfig}
 				<BitCrusherControl
 					{bitCrusherConfig}
 					on:change={handleBitCrusherChange}
 				/>
+			{/if}
+			{#if delayConfig}
+				<DelayControl {delayConfig} on:change={handleDelayChange} />
+			{/if}
+			{#if reverbConfig}
+				<ReverbControl {reverbConfig} on:change={handleReverbChange} />
 			{/if}
 		</div>
 	</div>

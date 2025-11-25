@@ -21,6 +21,7 @@
 	export let globalReverb = null
 	export let globalDelay = null
 	export let globalBitCrusher = null
+	export let masterCompressor = null
 
 	// Drum voice configs (polymetric ready)
 	let drums = [
@@ -126,7 +127,9 @@
 		await start()
 		for (const d of drums) {
 			if (!d.channel) {
-				d.channel = new Channel().toDestination()
+				d.channel = masterCompressor
+					? new Channel().connect(masterCompressor)
+					: new Channel().toDestination()
 				d.channel.volume.value = 0
 				d.channel.pan.value = d.pan ?? 0
 				// Initialize solo state on channel
