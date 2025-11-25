@@ -109,6 +109,12 @@ import Synth from "../components/Synth.svelte"
 		box-shadow: 0 0 4px var(--accent-synth);
 	}
 
+	input[type="range"].effect-send::-webkit-slider-thumb {
+		background: var(--accent-effect);
+		border-color: var(--border-secondary);
+		box-shadow: 0 0 4px var(--accent-effect);
+	}
+
 	input[type="range"]::-moz-range-thumb {
 		width: 12px;
 		height: 12px;
@@ -117,6 +123,11 @@ import Synth from "../components/Synth.svelte"
 		border: 1px solid var(--border-primary);
 		box-shadow: 0 0 4px var(--accent-synth);
 		border-radius: 0;
+	}
+	input[type="range"].effect-send::-moz-range-thumb {
+		background: var(--accent-effect);
+		border-color: var(--border-secondary);
+		box-shadow: 0 0 4px var(--accent-effect);
 	}
 
 	input[type="number"],

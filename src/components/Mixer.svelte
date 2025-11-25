@@ -4,8 +4,10 @@
 
 	export let synthChannels = []
 	export let drumChannels = []
+	export let masterCompressor = null
 
 	let mainVolume = 0 // dB
+	let compressorAmount = 0 // 0-100%
 
 	function handleMixerChange(channel) {
 		if (!channel || !channel.channel) return
@@ -27,35 +29,33 @@
 				}
 			} catch {}
 		}
+
+		// Check if ANY channel is soloed (across both synths and drums)
+		const anySoloed = [...synthChannels, ...drumChannels].some(
+			(ch) => ch.isSoloed
+		)
+		const shouldSilenceSends =
+			channel.isMuted || (anySoloed && !channel.isSoloed)
+
 		// Mute/unmute - handle channel and send effects
 		if (channel.isMuted !== undefined) {
 			channel.channel.mute = channel.isMuted
-			// When muted, silence the send effects; when unmuted, restore them
-			if (channel.sendGain && channel.reverbSend !== undefined) {
-				channel.sendGain.gain.value = channel.isMuted ? 0 : channel.reverbSend
-			}
-			if (channel.delayGain && channel.delaySend !== undefined) {
-				channel.delayGain.gain.rampTo(
-					channel.isMuted ? 0 : channel.delaySend,
-					0.01
-				)
-			}
-			if (channel.bitCrusherGain && channel.bitCrusherSend !== undefined) {
-				channel.bitCrusherGain.gain.value = channel.isMuted
-					? 0
-					: channel.bitCrusherSend
-			}
-		} else {
-			// Normal operation when not handling mute state
-			if (channel.sendGain && channel.reverbSend !== undefined) {
-				channel.sendGain.gain.value = channel.reverbSend
-			}
-			if (channel.delayGain && channel.delaySend !== undefined) {
-				channel.delayGain.gain.rampTo(channel.delaySend, 0.01)
-			}
-			if (channel.bitCrusherGain && channel.bitCrusherSend !== undefined) {
-				channel.bitCrusherGain.gain.value = channel.bitCrusherSend
-			}
+		}
+
+		// Control send effects based on mute AND solo state
+		if (channel.sendGain && channel.reverbSend !== undefined) {
+			channel.sendGain.gain.value = shouldSilenceSends ? 0 : channel.reverbSend
+		}
+		if (channel.delayGain && channel.delaySend !== undefined) {
+			channel.delayGain.gain.rampTo(
+				shouldSilenceSends ? 0 : channel.delaySend,
+				0.01
+			)
+		}
+		if (channel.bitCrusherGain && channel.bitCrusherSend !== undefined) {
+			channel.bitCrusherGain.gain.value = shouldSilenceSends
+				? 0
+				: channel.bitCrusherSend
 		}
 
 		// Sync reverbSend back to config
@@ -88,15 +88,27 @@
 		}
 	}
 
-	// Reactive updates for all channels
-	$: synthChannels.forEach((ch) => handleMixerChange(ch))
-	$: drumChannels.forEach((ch) => handleMixerChange(ch))
+	// Reactive updates for all channels - run ALL when solo state changes
+	$: {
+		// Track solo state to force re-run when any channel's solo changes
+		const soloState = [...synthChannels, ...drumChannels]
+			.map((ch) => ch.isSoloed)
+			.join(",")
+		soloState // read to establish dependency
+		synthChannels.forEach((ch) => handleMixerChange(ch))
+		drumChannels.forEach((ch) => handleMixerChange(ch))
+	}
 
 	// Update main output volume
 	$: try {
 		getDestination().volume.value = mainVolume
 	} catch (e) {
 		// Destination not ready yet
+	}
+
+	// Update compressor amount (using knee parameter for smooth transition)
+	$: if (masterCompressor) {
+		masterCompressor.knee.value = compressorAmount * 0.4 // 0-40dB knee
 	}
 </script>
 
@@ -110,16 +122,16 @@
 		>
 			<div class="mixer-channel">
 				<h3>{channel.name}</h3>
-
 				<label>
-					Rev <br />
-					{Math.round((channel.reverbSend || 0) * 100)}%
+					Bitcrush <br />
+					{Math.round((channel.bitCrusherSend || 0) * 100)}%
 					<input
 						type="range"
+						class="effect-send"
 						min="0"
 						max="1"
 						step="0.01"
-						bind:value={channel.reverbSend}
+						bind:value={channel.bitCrusherSend}
 					/>
 				</label>
 
@@ -128,6 +140,7 @@
 					{Math.round((channel.delaySend || 0) * 100)}%
 					<input
 						type="range"
+						class="effect-send"
 						min="0"
 						max="1"
 						step="0.01"
@@ -135,7 +148,20 @@
 					/>
 				</label>
 				<label>
-					Pan: <br />
+					Rev <br />
+					{Math.round((channel.reverbSend || 0) * 100)}%
+					<input
+						type="range"
+						class="effect-send"
+						min="0"
+						max="1"
+						step="0.01"
+						bind:value={channel.reverbSend}
+					/>
+				</label>
+
+				<label>
+					Pan<br />
 					{channel.pan.toFixed(2)}
 					<input
 						type="range"
@@ -146,17 +172,6 @@
 					/>
 				</label>
 
-				<label>
-					CrushSend <br />
-					{Math.round((channel.bitCrusherSend || 0) * 100)}%
-					<input
-						type="range"
-						min="0"
-						max="1"
-						step="0.01"
-						bind:value={channel.bitCrusherSend}
-					/>
-				</label>
 				<label>
 					{channel.volume.toFixed(1)}dB
 					<input
@@ -198,25 +213,40 @@
 					Mute
 				</label> -->
 				<label>
-					Rev <br />
-					{Math.round((channel.reverbSend || 0) * 100)}%
+					Bitcrush <br />
+					{Math.round((channel.bitCrusherSend || 0) * 100)}%
 					<input
 						type="range"
+						class="effect-send"
 						min="0"
 						max="1"
 						step="0.01"
-						bind:value={channel.reverbSend}
+						bind:value={channel.bitCrusherSend}
 					/>
 				</label>
+
 				<label>
 					Delay <br />
 					{Math.round((channel.delaySend || 0) * 100)}%
 					<input
 						type="range"
+						class="effect-send"
 						min="0"
 						max="1"
 						step="0.01"
 						bind:value={channel.delaySend}
+					/>
+				</label>
+				<label>
+					Rev <br />
+					{Math.round((channel.reverbSend || 0) * 100)}%
+					<input
+						type="range"
+						class="effect-send"
+						min="0"
+						max="1"
+						step="0.01"
+						bind:value={channel.reverbSend}
 					/>
 				</label>
 				<label>
@@ -230,17 +260,7 @@
 						bind:value={channel.pan}
 					/>
 				</label>
-				<label>
-					CrushSend <br />
-					{Math.round((channel.bitCrusherSend || 0) * 100)}%
-					<input
-						type="range"
-						min="0"
-						max="1"
-						step="0.01"
-						bind:value={channel.bitCrusherSend}
-					/>
-				</label>
+
 				<label>
 					{channel.volume.toFixed(1)}dB
 					<input
@@ -275,6 +295,18 @@
 	<ModuleContainer type="main-out">
 		<div class="mixer-channel main-out">
 			<h3>MAIN</h3>
+
+			<label>
+				Comp <br />
+				{Math.round(compressorAmount)}%
+				<input
+					type="range"
+					min="0"
+					max="100"
+					step="1"
+					bind:value={compressorAmount}
+				/>
+			</label>
 
 			<label>
 				{mainVolume.toFixed(1)}dB

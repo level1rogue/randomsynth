@@ -11,7 +11,9 @@
 		Reverb,
 		PingPongDelay,
 		BitCrusher,
+		Compressor,
 		Gain,
+		getDestination,
 	} from "tone"
 	import { onMount } from "svelte"
 	import SynthComponent from "./SynthComponent.svelte"
@@ -59,6 +61,7 @@
 	let globalReverb = null
 	let globalDelay = null
 	let globalBitCrusher = null
+	let masterCompressor = null
 	// Effect chain order: "parallel" (both to destination) or "delay-reverb" or "reverb-delay"
 	let effectChain = "parallel" // TODO: make effect-chain user-selectable
 	// Reverb configuration (editable before generation)
@@ -291,6 +294,23 @@
 			globalBitCrusher.wet.value = bitCrusherConfig.wet
 			globalBitCrusher.toDestination()
 			console.log("Created global BitCrusher")
+		}
+		// Create master compressor on main output if not exists
+		if (!masterCompressor) {
+			masterCompressor = new Compressor({
+				threshold: -24,
+				ratio: 16,
+				attack: 0.003,
+				release: 0.25,
+			}).connect(getDestination())
+			// Reconnect all effect buses through compressor
+			globalReverb.disconnect()
+			globalReverb.connect(masterCompressor)
+			globalDelay.disconnect()
+			globalDelay.connect(masterCompressor)
+			globalBitCrusher.disconnect()
+			globalBitCrusher.connect(masterCompressor)
+			console.log("Created master compressor")
 		}
 		// create synth instances if they don't exist and give it a channel so we can control pan/volume later
 		for (const config of synths) {
@@ -624,6 +644,7 @@
 		<Mixer
 			synthChannels={mixerSynthChannels}
 			drumChannels={mixerDrumChannels}
+			{masterCompressor}
 		/>
 	</div>
 	<div class="effects-section">

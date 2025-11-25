@@ -39,9 +39,9 @@
 					{/each}
 				</div>
 			</div>
-			<span class="control-label">
+			<!-- <span class="control-label">
 				Time: {delayConfig.delayTime}
-			</span>
+			</span> -->
 		</div>
 		<div class="control-group">
 			<span class="control-label">

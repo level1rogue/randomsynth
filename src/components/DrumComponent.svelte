@@ -138,7 +138,9 @@
 				if (globalDelay && !d.delayGain)
 					d.delayGain = new Gain(d.delaySend).connect(globalDelay)
 				if (globalBitCrusher && !d.bitCrusherGain)
-					d.bitCrusherGain = new Gain(d.bitCrusherSend).connect(globalBitCrusher)
+					d.bitCrusherGain = new Gain(d.bitCrusherSend).connect(
+						globalBitCrusher
+					)
 			}
 			if (d.type === "kick" && !d.synths.kick) {
 				d.synths.kick = new MembraneSynth({

@@ -1,5 +1,6 @@
 <script>
 	import { createEventDispatcher } from "svelte"
+	import ModuleContainer from "./ModuleContainer.svelte"
 
 	export let bitCrusherConfig
 
@@ -14,7 +15,7 @@
 	}
 </script>
 
-<div class="bitcrusher-controls">
+<ModuleContainer type="effect">
 	<h3>BitCrusher</h3>
 	<div class="bitcrusher-settings">
 		<div class="control-row">
@@ -42,44 +43,4 @@
 			</label>
 		</div>
 	</div>
-</div>
-
-<style>
-	.bitcrusher-controls {
-		padding: var(--gap-md);
-		background: var(--bg-secondary);
-		border: 1px solid var(--border-primary);
-		border-radius: var(--radius-md);
-		min-width: 200px;
-	}
-
-	h3 {
-		font-size: 1rem;
-		margin: 0 0 var(--gap-md) 0;
-		color: var(--text-primary);
-		text-align: center;
-	}
-
-	.bitcrusher-settings {
-		display: flex;
-		flex-direction: column;
-		gap: var(--gap-md);
-	}
-
-	.control-row {
-		display: flex;
-		flex-direction: column;
-		gap: var(--gap-sm);
-	}
-
-	label {
-		display: flex;
-		flex-direction: column;
-		gap: var(--gap-sm);
-		font-size: 0.9rem;
-	}
-
-	input[type="range"] {
-		width: 100%;
-	}
-</style>
+</ModuleContainer>
