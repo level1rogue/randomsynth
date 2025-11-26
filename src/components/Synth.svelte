@@ -289,36 +289,7 @@
 		if (config.bitCrusherGain)
 			config.bitCrusherGain.gain.value = config.bitCrusherSend || 0
 
-		// Handle LFO modulation for cutoff (create/update/destroy chain)
-		if (config.filter && config.lfoCutoffDepth !== undefined) {
-			if (config.lfoCutoffDepth > 0) {
-				const depthHz = Math.max(5, config.filterCutoff * config.lfoCutoffDepth)
-				if (!config.lfoMod && globalLFO) {
-					// Create modulation chain
-					const mult = new Multiply(depthHz)
-					const add = new Add(config.filterCutoff)
-					globalLFO.connect(mult)
-					mult.connect(add)
-					add.connect(config.filter.frequency)
-					config.lfoMod = { mult, add }
-					console.log(`LFO modulation enabled for ${config.name}`)
-				} else if (config.lfoMod) {
-					// Update existing modulation scaling
-					config.lfoMod.mult.factor.value = depthHz
-					config.lfoMod.add.addend.value = config.filterCutoff
-				}
-			} else if (config.lfoMod) {
-				// Remove modulation chain and restore direct control
-				try {
-					config.lfoMod.mult.dispose()
-					config.lfoMod.add.dispose()
-				} catch {}
-				config.lfoMod = null
-				// Restore direct frequency control
-				config.filter.frequency.value = config.filterCutoff
-				console.log(`LFO modulation disabled for ${config.name}`)
-			}
-		}
+		// LFO modulation is now handled by SynthEngine
 
 		// Update filter Q (always safe)
 		if (config.filter) {

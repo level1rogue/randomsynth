@@ -245,11 +245,43 @@
 						config.lfoMod.add.addend.value = config.filterCutoff
 					}
 				} else if (config.lfoMod) {
+					// Disconnect and dispose LFO modulation chain
 					try {
+						config.lfoMod.add.disconnect()
+						config.lfoMod.mult.disconnect()
+						globalLFO.disconnect(config.lfoMod.mult)
 						config.lfoMod.mult.dispose()
 						config.lfoMod.add.dispose()
-					} catch {}
+					} catch (e) {
+						console.warn("Error cleaning up LFO chain:", e)
+					}
 					config.lfoMod = null
+
+					// Recreate the filter with fresh AudioParam to restore direct control
+					if (config.filter && config.instance) {
+						const targetFreq = Math.max(config.filterCutoff, 20)
+						const oldFilter = config.filter
+
+						// Create new filter
+						config.filter = new Filter(targetFreq, "lowpass")
+						config.filter.Q.value = config.filterQ
+
+						// Reconnect audio chain
+						try {
+							config.instance.disconnect(oldFilter)
+						} catch {}
+						config.instance.connect(config.filter)
+						config.filter.connect(config.channel)
+						if (config.sendGain) config.filter.connect(config.sendGain)
+						if (config.delayGain) config.filter.connect(config.delayGain)
+						if (config.bitCrusherGain)
+							config.filter.connect(config.bitCrusherGain)
+
+						// Dispose old filter
+						try {
+							oldFilter.dispose()
+						} catch {}
+					}
 				}
 			}
 		}
@@ -407,12 +439,48 @@
 					config.lfoMod.add.addend.value = config.filterCutoff
 				}
 			} else if (config.lfoMod) {
+				console.log(
+					`Removing LFO modulation from ${config.name}, restoring cutoff to ${config.filterCutoff}`
+				)
+				// Disconnect and dispose LFO modulation chain
 				try {
+					config.lfoMod.add.disconnect()
+					config.lfoMod.mult.disconnect()
+					globalLFO.disconnect(config.lfoMod.mult)
 					config.lfoMod.mult.dispose()
 					config.lfoMod.add.dispose()
-				} catch {}
+				} catch (e) {
+					console.warn("Error cleaning up LFO chain:", e)
+				}
 				config.lfoMod = null
-				config.filter.frequency.value = config.filterCutoff
+
+				// Recreate the filter with fresh AudioParam to restore direct control
+				if (config.filter && config.instance) {
+					const targetFreq = Math.max(config.filterCutoff, 20)
+					const oldFilter = config.filter
+
+					// Create new filter
+					config.filter = new Filter(targetFreq, "lowpass")
+					config.filter.Q.value = config.filterQ
+
+					// Reconnect audio chain: instance -> new filter -> outputs
+					try {
+						config.instance.disconnect(oldFilter)
+					} catch {}
+					config.instance.connect(config.filter)
+					config.filter.connect(config.channel)
+					if (config.sendGain) config.filter.connect(config.sendGain)
+					if (config.delayGain) config.filter.connect(config.delayGain)
+					if (config.bitCrusherGain)
+						config.filter.connect(config.bitCrusherGain)
+
+					// Dispose old filter
+					try {
+						oldFilter.dispose()
+					} catch {}
+
+					console.log(`Recreated filter at ${targetFreq}Hz`)
+				}
 			}
 		}
 
