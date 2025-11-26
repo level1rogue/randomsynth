@@ -27,6 +27,11 @@
 	import BitCrusherControl from "./effects/BitCrusherControl.svelte"
 	import LFOControl from "./LFOControl.svelte"
 	import SynthEngine from "./SynthEngine.svelte"
+	import { getContext } from "tone"
+
+	// Audio context state for mobile
+	let audioContextSuspended = false
+	let checkingAudioContext = true
 
 	// Per-waveform perceived loudness compensation (in dB)
 	// Adjust these by ear if needed. More complex psychoacoustic weighting would
@@ -86,8 +91,32 @@
 		type: "sine",
 	}
 
+	// Check audio context state and show unmute prompt if needed
+	async function checkAudioContext() {
+		checkingAudioContext = true
+		const context = getContext()
+		if (context.state === "suspended") {
+			audioContextSuspended = true
+			checkingAudioContext = false
+		} else {
+			audioContextSuspended = false
+			checkingAudioContext = false
+		}
+	}
+
+	async function resumeAudioContext() {
+		const context = getContext()
+		await context.resume()
+		await start()
+		audioContextSuspended = false
+		console.log("Audio context resumed, state:", context.state)
+	}
+
 	// Initialize mixer channels on mount
 	onMount(() => {
+		// Check audio context state for mobile
+		checkAudioContext()
+
 		// Pre-populate mixer with synth configs (channels will be created later)
 		mixerSynthChannels = synths.map((config) => ({
 			name: config.name,
@@ -423,6 +452,19 @@
 	// (Removed automatic polling of stepInterval; handled via explicit change events for precision)
 </script>
 
+<!-- Audio Context Unmute Overlay for Mobile -->
+{#if audioContextSuspended}
+	<div class="audio-context-overlay">
+		<div class="audio-context-modal">
+			<h2>🔊 Enable Audio</h2>
+			<p>Tap the button below to enable sound</p>
+			<button class="unmute-button" on:click={resumeAudioContext}>
+				Enable Audio
+			</button>
+		</div>
+	</div>
+{/if}
+
 <div class="header">
 	<h1>┌─ RandomProbabilityOnlineSynth RPOS v0.1.0 ─┐</h1>
 	<div class="global-settings">
@@ -691,6 +733,82 @@
 
 		.effects-container {
 			gap: var(--gap-sm);
+		}
+	}
+
+	/* Audio Context Overlay */
+	.audio-context-overlay {
+		position: fixed;
+		top: 0;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		background: rgba(0, 0, 0, 0.95);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		z-index: 9999;
+		backdrop-filter: blur(4px);
+	}
+
+	.audio-context-modal {
+		background: var(--bg-secondary);
+		border: 2px solid var(--accent-synth);
+		border-radius: var(--radius-md);
+		padding: var(--gap-xl);
+		max-width: 400px;
+		text-align: center;
+		box-shadow: 0 0 20px rgba(0, 255, 136, 0.3);
+	}
+
+	.audio-context-modal h2 {
+		margin: 0 0 var(--gap-md) 0;
+		color: var(--accent-synth);
+		font-size: 1.5rem;
+	}
+
+	.audio-context-modal p {
+		margin: 0 0 var(--gap-lg) 0;
+		color: var(--text-secondary);
+	}
+
+	.unmute-button {
+		background: var(--accent-synth);
+		color: var(--bg-primary);
+		border: none;
+		padding: var(--gap-md) var(--gap-xl);
+		font-size: 1.2rem;
+		font-weight: bold;
+		border-radius: var(--radius-md);
+		cursor: pointer;
+		transition: all 0.2s;
+		text-transform: uppercase;
+		letter-spacing: 0.1em;
+	}
+
+	.unmute-button:hover {
+		background: #00ff88;
+		transform: scale(1.05);
+		box-shadow: 0 0 20px rgba(0, 255, 136, 0.5);
+	}
+
+	.unmute-button:active {
+		transform: scale(0.98);
+	}
+
+	@media (max-width: 480px) {
+		.audio-context-modal {
+			margin: var(--gap-md);
+			padding: var(--gap-lg);
+		}
+
+		.audio-context-modal h2 {
+			font-size: 1.2rem;
+		}
+
+		.unmute-button {
+			padding: var(--gap-sm) var(--gap-lg);
+			font-size: 1rem;
 		}
 	}
 </style>
