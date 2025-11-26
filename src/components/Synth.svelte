@@ -94,22 +94,35 @@
 	// Check audio context state and show unmute prompt if needed
 	async function checkAudioContext() {
 		checkingAudioContext = true
-		const context = getContext()
-		if (context.state === "suspended") {
+		try {
+			await start()
+			const context = getContext()
+			console.log("Audio context state:", context.state)
+			if (context.state === "suspended") {
+				audioContextSuspended = true
+				console.log("Audio context is suspended - showing unmute prompt")
+			} else {
+				audioContextSuspended = false
+				console.log("Audio context is running")
+			}
+		} catch (e) {
+			console.error("Error checking audio context:", e)
 			audioContextSuspended = true
-			checkingAudioContext = false
-		} else {
-			audioContextSuspended = false
-			checkingAudioContext = false
 		}
+		checkingAudioContext = false
 	}
 
 	async function resumeAudioContext() {
-		const context = getContext()
-		await context.resume()
-		await start()
-		audioContextSuspended = false
-		console.log("Audio context resumed, state:", context.state)
+		try {
+			console.log("Attempting to resume audio context...")
+			await start()
+			const context = getContext()
+			await context.resume()
+			audioContextSuspended = false
+			console.log("Audio context resumed successfully, state:", context.state)
+		} catch (e) {
+			console.error("Error resuming audio context:", e)
+		}
 	}
 
 	// Initialize mixer channels on mount
@@ -439,6 +452,14 @@
 
 	let engineRef
 	const startStopLoop = async () => {
+		// Ensure audio context is running before starting playback
+		const context = getContext()
+		if (context.state === "suspended") {
+			console.log("Audio context suspended, prompting user...")
+			audioContextSuspended = true
+			return
+		}
+
 		if (engineRef) engineRef.startStopLoop(drumComponentRef)
 		isPlaying = !isPlaying
 	}
